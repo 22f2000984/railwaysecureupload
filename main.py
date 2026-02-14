@@ -1,20 +1,29 @@
 from fastapi import FastAPI, UploadFile, File, Header, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 import csv, io, os
 
 app = FastAPI()
 
-# ✅ CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["POST", "OPTIONS"],
-    allow_headers=["*"],
-    allow_credentials=False,
-)
+# 🔒 Constants
+MAX_SIZE = 91 * 1024
+ALLOWED_EXT = {".csv", ".json", ".txt"}
+TOKEN = "o16hrb3objnq5ic8"
 
-# ✅ FORCE CORS on ALL errors (CRITICAL)
+# ✅ Add CORS headers to EVERY response
+@app.middleware("http")
+async def add_cors_header(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    return response
+
+# ✅ OPTIONS preflight (REQUIRED)
+@app.options("/upload")
+async def options_upload():
+    return Response(status_code=200)
+
+# ✅ Force CORS on ALL errors
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     return JSONResponse(
@@ -23,33 +32,27 @@ async def http_exception_handler(request: Request, exc: HTTPException):
         headers={"Access-Control-Allow-Origin": "*"},
     )
 
-@app.options("/upload")
-async def options_upload():
-    return Response(
-        status_code=200,
-        headers={"Access-Control-Allow-Origin": "*"},
-    )
-
-MAX_SIZE = 91 * 1024
-ALLOWED_EXT = {".csv", ".json", ".txt"}
-TOKEN = "o16hrb3objnq5ic8"
-
 @app.post("/upload")
 async def upload(
     file: UploadFile = File(...),
     x_upload_token_3056: str = Header(None)
 ):
+    # Auth
     if x_upload_token_3056 != TOKEN:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
+    # Type
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in ALLOWED_EXT:
         raise HTTPException(status_code=400, detail="Invalid file type")
 
     data = await file.read()
+
+    # Size
     if len(data) > MAX_SIZE:
         raise HTTPException(status_code=413, detail="File too large")
 
+    # CSV processing
     if ext == ".csv":
         reader = csv.DictReader(io.StringIO(data.decode("utf-8")))
         rows = list(reader)
