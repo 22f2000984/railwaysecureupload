@@ -1,19 +1,27 @@
 from fastapi import FastAPI, UploadFile, File, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 import csv, io, os
 
 app = FastAPI()
 
+# ✅ CORS — REQUIRED
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_methods=["POST"],
+    allow_credentials=False,
+    allow_methods=["POST", "OPTIONS"],
     allow_headers=["*"],
 )
 
 MAX_SIZE = 91 * 1024
 ALLOWED_EXT = {".csv", ".json", ".txt"}
 TOKEN = "o16hrb3objnq5ic8"
+
+# ✅ Explicit OPTIONS handler (CRITICAL)
+@app.options("/upload")
+async def options_upload():
+    return Response(status_code=200)
 
 @app.post("/upload")
 async def upload(
